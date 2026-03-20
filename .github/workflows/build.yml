@@ -1,0 +1,51 @@
+name: CI Build and Upload
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            meson \
+            ninja-build \
+            vala \
+            gcc \
+            glib2-devel \
+            gtk4-devel \
+            libadwaita-devel \
+            gettext
+
+      - name: Configure Project
+        run: meson setup builddir --prefix=/usr
+
+      - name: Build
+        run: meson compile -C builddir
+
+      - name: Run Tests
+        run: meson test -C builddir
+
+      - name: Install to Staging Directory
+        # This gathers the binary + resources into a 'staging' folder
+        run: |
+          DESTDIR=$(pwd)/staging meson install -C builddir
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-vala-app-build
+          # This uploads the entire folder structure created by the install step
+          path: staging/
+          if-no-files-found: error
