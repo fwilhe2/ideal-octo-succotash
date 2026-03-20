@@ -28,7 +28,9 @@ jobs:
             libadwaita-devel \
             gettext \
             desktop-file-utils \
-            libxml2
+            libxml2 \
+            dbus-daemon \
+            at-spi2-core
 
       - name: Configure Project
         # We use -Dtests=false if your project has a toggle to skip 
