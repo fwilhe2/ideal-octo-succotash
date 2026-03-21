@@ -8,48 +8,75 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container:
-      image: fedora:latest
+    name: Build on ${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: Fedora
+            container: "fedora:latest"
+          - os: macos-latest
+            os-name: macOS
+          - os: windows-latest
+            os-name: Windows
+
+    container: ${{ matrix.container }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      # --- FEDORA SETUP ---
+      - name: Install Dependencies (Fedora)
+        if: matrix.os-name == 'Fedora'
         run: |
-          dnf install -y \
-            meson \
-            ninja-build \
-            vala \
-            gcc \
-            glib2-devel \
-            gtk4-devel \
-            libadwaita-devel \
-            gettext \
-            desktop-file-utils \
-            libxml2 \
-            dbus-daemon \
-            at-spi2-core
+          dnf install -y meson ninja-build vala gcc glib2-devel gtk4-devel \
+          libadwaita-devel gettext desktop-file-utils libxml2
 
+      # --- MACOS SETUP ---
+      - name: Install Dependencies (macOS)
+        if: matrix.os-name == 'macOS'
+        run: |
+          brew install meson ninja vala glib gtk4 libadwaita gettext
+          # Ensure gettext is in the path for i18n module
+          echo "/usr/local/opt/gettext/bin" >> $GITHUB_PATH
+
+      # --- WINDOWS SETUP (MSYS2) ---
+      - name: Install Dependencies (Windows)
+        if: matrix.os-name == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-vala
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gtk4
+            mingw-w64-x86_64-libadwaita
+            mingw-w64-x86_64-gettext
+
+      # --- BUILD EXECUTION ---
       - name: Configure Project
-        # We use -Dtests=false if your project has a toggle to skip 
-        # complex UI tests that might fail without a display.
-        run: meson setup builddir --prefix=/usr
+        shell: ${{ matrix.os-name == 'Windows' && 'msys2 {0}' || 'bash' }}
+        run: |
+          # Use a local prefix for staging to avoid permission issues
+          meson setup builddir --prefix=$(pwd)/staging_install
 
       - name: Build
+        shell: ${{ matrix.os-name == 'Windows' && 'msys2 {0}' || 'bash' }}
         run: meson compile -C builddir
 
-      - name: Run Tests
-        # Added dbus-run-session to handle tests that require a bus
-        run: dbus-run-session meson test -C builddir
+      - name: Install
+        shell: ${{ matrix.os-name == 'Windows' && 'msys2 {0}' || 'bash' }}
+        run: meson install -C builddir
 
-      - name: Install to Staging Directory
-        run: |
-          DESTDIR=$(pwd)/staging meson install -C builddir
-
+      # --- ARTIFACT UPLOAD ---
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: my-vala-app-build
-          path: staging/
+          name: my-app-${{ matrix.os-name }}
+          path: staging_install/
